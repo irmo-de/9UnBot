@@ -6,8 +6,12 @@ on:
   pull_request:
     branches: [ "master" ]
 
+permissions:
+  contents: write
+  actions: read
+
 jobs:
-  build:
+  build-and-upload:
     runs-on: ubuntu-latest
 
     steps:
@@ -27,34 +31,25 @@ jobs:
     - name: Build Debug APK
       run: ./gradlew assembleDebug
 
-    - name: List APK files
-      run: ls -l ./app/build/outputs/apk/debug/
-
-    - name: Build Release APK
-      run: ./gradlew assembleRelease
-
-    - name: Get Release Information for v0.1.0
-      id: get_release_info
+    - name: Get the latest release tag
+      id: latest_release
       run: |
-        RELEASE_INFO=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/irmo-de/9UnBot/releases/tags/v0.1.0)
-        UPLOAD_URL=$(echo $RELEASE_INFO | jq -r .upload_url | sed 's/{?name,label}//')
-        echo "Upload URL is $UPLOAD_URL"
-        echo "::set-output name=upload_url::$UPLOAD_URL"
+        LATEST_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+        "https://api.github.com/repos/irmo-de/9UnBot/releases/latest")
+        echo "Latest release data: $LATEST_RELEASE"
+        LATEST_TAG=$(echo "$LATEST_RELEASE" | jq -r .tag_name)
+        LATEST_RELEASE_ID=$(echo "$LATEST_RELEASE" | jq -r .id)
+        echo "Latest release tag is $LATEST_TAG"
+        echo "Latest release ID is $LATEST_RELEASE_ID"
+        echo "::set-output name=tag_name::$LATEST_TAG"
+        echo "::set-output name=release_id::$LATEST_RELEASE_ID"
 
-    - name: Get Release ID for Tag v0.1.0
-      id: get_release
-      run: |
-        RELEASE_DATA=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-        "https://api.github.com/repos/irmo-de/9UnBot/releases/tags/v0.1.0")
-        RELEASE_ID=$(echo "$RELEASE_DATA" | jq -r .id)
-        echo "Release ID is $RELEASE_ID"
-        echo "::set-output name=release_id::$RELEASE_ID"
-
-    - name: Upload APK to Release
-      run: |
-        UPLOAD_URL="https://uploads.github.com/repos/irmo-de/9UnBot/releases/${{ steps.get_release.outputs.release_id }}/assets?name=app-debug.apk"
-        curl -X POST \
-             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-             -H "Content-Type: application/vnd.android.package-archive" \
-             --data-binary @./app/build/outputs/apk/debug/app-debug.apk \
-             "$UPLOAD_URL"
+    - name: Upload APK to the Latest Release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: "https://uploads.github.com/repos/irmo-de/9UnBot/releases/${{ steps.latest_release.outputs.release_id }}/assets?name=app-debug.apk"
+        asset_path: ./app/build/outputs/apk/debug/app-debug.apk
+        asset_name: app-debug.apk
+        asset_content_type: application/vnd.android.package-archive
