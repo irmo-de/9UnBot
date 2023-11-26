@@ -30,30 +30,30 @@ jobs:
     - name: Build Release APK
       run: ./gradlew assembleRelease
 
-    - name: Get Latest Release Tag Name
-      id: get_latest_release
+    - name: Get Release Information for v0.1.0
+      id: get_release_info
       run: |
-        LATEST_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/${{ github.repository }}/releases/latest)
-        LATEST_TAG=$(echo $LATEST_RELEASE | jq -r .tag_name)
-        echo "Latest release tag is $LATEST_TAG"
-        echo "::set-output name=tag_name::$LATEST_TAG"
+        RELEASE_INFO=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/irmo-de/9UnBot/releases/tags/v0.1.0)
+        UPLOAD_URL=$(echo $RELEASE_INFO | jq -r .upload_url | sed 's/{?name,label}//')
+        echo "Upload URL is $UPLOAD_URL"
+        echo "::set-output name=upload_url::$UPLOAD_URL"
 
-    - name: Upload Debug APK to Release
+    - name: Upload Debug APK to Release v0.1.0
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        upload_url: https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ steps.get_latest_release.outputs.tag_name }}/assets
+        upload_url: ${{ steps.get_release_info.outputs.upload_url }}
         asset_path: ./app/build/outputs/apk/debug/app-debug.apk
         asset_name: app-debug.apk
         asset_content_type: application/vnd.android.package-archive
 
-    - name: Upload Release APK to Release
+    - name: Upload Release APK to Release v0.1.0
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        upload_url: https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ steps.get_latest_release.outputs.tag_name }}/assets
+        upload_url: ${{ steps.get_release_info.outputs.upload_url }}
         asset_path: ./app/build/outputs/apk/release/app-release.apk
         asset_name: app-release.apk
         asset_content_type: application/vnd.android.package-archive
