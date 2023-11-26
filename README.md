@@ -1,7 +1,5 @@
 # 9UnBot
 
-# Project Name
-
 ## Description
 
 Simple Android app that uses the ninebot bluetooth LE prototol to send commands a ninebot scooter
