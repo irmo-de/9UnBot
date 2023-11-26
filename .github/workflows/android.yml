@@ -27,6 +27,9 @@ jobs:
     - name: Build Debug APK
       run: ./gradlew assembleDebug
 
+    - name: List APK files
+      run: ls -l ./app/build/outputs/apk/debug/
+
     - name: Build Release APK
       run: ./gradlew assembleRelease
 
