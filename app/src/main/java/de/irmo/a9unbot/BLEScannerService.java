@@ -42,9 +42,14 @@ public class BLEScannerService extends Service {
     private AlarmManager alarmManager;
     private PendingIntent pendingIntent;
 
+    // Flag to ensure the scan result actions are performed only once
+    private boolean isDeviceFound = false;
+
     @Override
     public void onCreate() {
         super.onCreate();
+
+        Log.i(TAG, "Service created, instance: " + this.hashCode());
 
         createNotificationChannel();
         startForeground(1, getNotification());
@@ -88,18 +93,18 @@ public class BLEScannerService extends Service {
         alarmManager.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP,
                 SystemClock.elapsedRealtime() + SCAN_DURATION, pendingIntent);
 
-        Log.i(TAG, "BLE scan started. Will stop after 15 minutes if the target device is not found.");
+        Log.i(TAG, "BLE scan started. Will stop after 15 minutes if the target device is not found. Instance: " + this.hashCode());
     }
 
     private void stopBLEScan() {
         if (bluetoothLeScanner != null) {
             bluetoothLeScanner.stopScan(bleScanCallback);
-            Log.i(TAG, "BLE scan stopped.");
+            Log.i(TAG, "BLE scan stopped. Instance: " + this.hashCode());
         }
 
         if (pendingIntent != null) {
             alarmManager.cancel(pendingIntent);
-            Log.i(TAG, "AlarmManager canceled.");
+            Log.i(TAG, "AlarmManager canceled. Instance: " + this.hashCode());
         }
 
         stopSelf(); // Stop the service after the scan is complete
@@ -108,35 +113,38 @@ public class BLEScannerService extends Service {
     private final ScanCallback bleScanCallback = new ScanCallback() {
         @Override
         public void onScanResult(int callbackType, ScanResult result) {
-            BluetoothDevice device = result.getDevice();
-            if (TARGET_MAC_ADDRESS.equals(device.getAddress())) {
-                Log.d(TAG, "Target device found: " + device.getAddress());
-                triggerVibration();
+            if (!isDeviceFound) { // Ensure this block is executed only once
+                BluetoothDevice device = result.getDevice();
+                if (TARGET_MAC_ADDRESS.equals(device.getAddress())) {
+                    isDeviceFound = true;
+                    Log.d(TAG, "Target device found: " + device.getAddress() + ", instance: " + this.hashCode());
+                    triggerVibration();
 
-                // Stop the alarm since the target device is found
-                if (pendingIntent != null) {
-                    alarmManager.cancel(pendingIntent);
-                    Log.i(TAG, "AlarmManager canceled because the target device was found.");
+                    // Stop the alarm since the target device is found
+                    if (pendingIntent != null) {
+                        alarmManager.cancel(pendingIntent);
+                        Log.i(TAG, "AlarmManager canceled because the target device was found. Instance: " + this.hashCode());
+                    }
+
+                    // Keep the device awake during the delay
+                    wakeLock.acquire(DELAY_BEFORE_NEXT_SERVICE + 1000);
+
+                    // Schedule the next service to start after a 5-second delay
+                    handler.postDelayed(() -> {
+                        Intent serviceIntent = new Intent(BLEScannerService.this, BluetoothBackgroundService.class);
+                        serviceIntent.putExtra("MAC_ADDRESS", TARGET_MAC_ADDRESS);
+                        startService(serviceIntent);
+
+                        Log.i(TAG, "BluetoothBackgroundService started after 5 seconds delay. Instance: " + this.hashCode());
+                        stopSelf();
+                    }, DELAY_BEFORE_NEXT_SERVICE);
                 }
-
-                // Keep the device awake during the delay
-                wakeLock.acquire(DELAY_BEFORE_NEXT_SERVICE + 1000);
-
-                // Schedule the next service to start after a 5-second delay
-                handler.postDelayed(() -> {
-                    Intent serviceIntent = new Intent(BLEScannerService.this, BluetoothBackgroundService.class);
-                    serviceIntent.putExtra("MAC_ADDRESS", TARGET_MAC_ADDRESS);
-                    startService(serviceIntent);
-
-                    Log.i(TAG, "BluetoothBackgroundService started after 5 seconds delay.");
-                    stopSelf();
-                }, DELAY_BEFORE_NEXT_SERVICE);
             }
         }
 
         @Override
         public void onScanFailed(int errorCode) {
-            Log.e(TAG, "BLE Scan failed with error code: " + errorCode);
+            Log.e(TAG, "BLE Scan failed with error code: " + errorCode + ", instance: " + this.hashCode());
             stopBLEScan();
         }
     };
@@ -177,11 +185,13 @@ public class BLEScannerService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        Log.i(TAG, "Service started, startId: " + startId + ", instance: " + this.hashCode());
         return START_STICKY;
     }
 
     @Override
     public void onDestroy() {
+        Log.i(TAG, "Service destroyed, instance: " + this.hashCode());
         super.onDestroy();
         stopBLEScan();
         if (wakeLock != null && wakeLock.isHeld()) {
