@@ -5,30 +5,22 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
-
-import android.Manifest;
+import android.os.PowerManager;
 import android.provider.Settings;
 import android.util.Log;
-
-import com.polidea.rxandroidble2.RxBleClient;
-import com.polidea.rxandroidble2.RxBleDevice;
+import android.Manifest;
+import android.widget.Button;
 
 import io.reactivex.disposables.Disposable;
 
-
-
-
-
 public class MainActivity extends AppCompatActivity {
 
-    private static final int REQUEST_CODE_LOCATION_PERMISSION = 101;
-    private static final int REQUEST_CODE_PERMISSIONS = 1; // Arbitrary integer for the request code
-    private static final int REQUEST_CODE_BLUETOOTH_CONNECT_PERMISSION = 102;
-    private static final String MAC_ADDRESS = "F6:34:CD:56:E6:1B"; // replace with your device's MAC address
+    private static final int REQUEST_CODE_PERMISSIONS = 1;
     private Disposable disposable;
 
     @Override
@@ -36,28 +28,41 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // Check for location and Bluetooth connect permissions
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED ||
-                ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN)
-                        != PackageManager.PERMISSION_GRANTED ||
-                ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
-                        != PackageManager.PERMISSION_GRANTED) {
+        // Check for location and Bluetooth permissions
+        checkAndRequestPermissions();
+
+        // Request to ignore battery optimizations
+        requestBatteryOptimizationExclusion();
+
+        // Set up the button to start the service
+        Button startServiceButton = findViewById(R.id.startServiceButton);
+        startServiceButton.setOnClickListener(view -> attemptToStartService());
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // No need to automatically attempt to start the service, handled by button press now
+    }
+
+    private void checkAndRequestPermissions() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+
+            Log.i("MainActivity", "Requesting permissions");
             ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION,
+                    new String[]{
+                            Manifest.permission.ACCESS_FINE_LOCATION,
                             Manifest.permission.BLUETOOTH_SCAN,
-                            Manifest.permission.BLUETOOTH_CONNECT},
+                            Manifest.permission.BLUETOOTH_CONNECT
+                    },
                     REQUEST_CODE_PERMISSIONS);
-        }
- else {
-            // Permissions already granted, initialize BLE client
-            initBleClient();
         }
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode,
-                                           String[] permissions, int[] grantResults) {
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_CODE_PERMISSIONS) {
             boolean allPermissionsGranted = true;
@@ -69,42 +74,52 @@ public class MainActivity extends AppCompatActivity {
             }
 
             if (allPermissionsGranted) {
-                // All permissions were granted, initialize BLE client
-                initBleClient();
+                Log.i("MainActivity", "All permissions granted");
             } else {
-                // At least one permission was denied, show an alert dialog
-                new AlertDialog.Builder(this)
-                        .setTitle("Permissions Required")
-                        .setMessage("Location and Bluetooth permissions are required for BLE scanning. Please grant them in the app settings.")
-                        .setPositiveButton("OK", (dialog, which) -> dialog.dismiss())
-                        .setNegativeButton("Settings", (dialog, which) -> {
-                            // Intent to open app settings
-                            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
-                            Uri uri = Uri.fromParts("package", getPackageName(), null);
-                            intent.setData(uri);
-                            startActivity(intent);
-                        })
-                        .create()
-                        .show();
+                Log.i("MainActivity", "Permissions denied, showing dialog");
+                showPermissionsDialog();
             }
         }
     }
 
-
-    private void initBleClient() {
-
-
-
-        Intent serviceIntent = new Intent(this, BluetoothBackgroundService.class);
-        serviceIntent.putExtra("MAC_ADDRESS", "F6:34:CD:56:E6:1B"); // Replace with actual MAC address
-        startService(serviceIntent);
-
-
-
-
+    private void showPermissionsDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle("Permissions Required")
+                .setMessage("Location and Bluetooth permissions are required for BLE scanning. Please grant them in the app settings.")
+                .setPositiveButton("OK", (dialog, which) -> dialog.dismiss())
+                .setNegativeButton("Settings", (dialog, which) -> {
+                    Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                    Uri uri = Uri.fromParts("package", getPackageName(), null);
+                    intent.setData(uri);
+                    startActivity(intent);
+                })
+                .create()
+                .show();
     }
 
+    private void attemptToStartService() {
+        // Check permissions again before starting the service
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
 
+            Log.i("MainActivity", "Starting BLEScannerService");
+
+            Intent serviceIntent = new Intent(this, BLEScannerService.class);
+            ContextCompat.startForegroundService(this, serviceIntent);
+        } else {
+            Log.i("MainActivity", "Permissions not granted, service not started");
+        }
+    }
+
+    private void requestBatteryOptimizationExclusion() {
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName())) {
+            Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        }
+    }
 
     @Override
     protected void onDestroy() {
