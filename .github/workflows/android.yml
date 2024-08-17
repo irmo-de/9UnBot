@@ -31,10 +31,19 @@ jobs:
     - name: Build Debug APK
       run: ./gradlew assembleDebug
 
-    - name: Determine Tag Version
+    - name: Determine Last Tag Version
       id: tag_version
       run: |
-        TAG_NAME=$(git describe --tags --abbrev=0)
+        # Check if there are any tags
+        if git rev-parse --verify refs/tags > /dev/null 2>&1; then
+          # Get the latest tag from history
+          TAG_NAME=$(git describe --tags `git rev-list --tags --max-count=1`)
+          echo "Found the last tag in history: $TAG_NAME"
+        else
+          # No tags found, use default
+          TAG_NAME="v0.1.0"
+          echo "No tags found in history. Using default tag: $TAG_NAME"
+        fi
         echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
         echo "Determined tag version: $TAG_NAME"
 
