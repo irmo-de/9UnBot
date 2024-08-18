@@ -31,25 +31,67 @@ jobs:
     - name: Build Debug APK
       run: ./gradlew assembleDebug
 
-    - name: Get the latest release tag
-      id: latest_release
+    - name: Determine Last Tag Version
+      id: tag_version
       run: |
-        LATEST_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-        "https://api.github.com/repos/irmo-de/9UnBot/releases/latest")
-        echo "Latest release data: $LATEST_RELEASE"
-        LATEST_TAG=$(echo "$LATEST_RELEASE" | jq -r .tag_name)
-        LATEST_RELEASE_ID=$(echo "$LATEST_RELEASE" | jq -r .id)
-        echo "Latest release tag is $LATEST_TAG"
-        echo "Latest release ID is $LATEST_RELEASE_ID"
-        echo "::set-output name=tag_name::$LATEST_TAG"
-        echo "::set-output name=release_id::$LATEST_RELEASE_ID"
+        if git rev-parse --verify refs/tags > /dev/null 2>&1; then
+          TAG_NAME=$(git describe --tags `git rev-list --tags --max-count=1`)
+          echo "Found the last tag in history: $TAG_NAME"
+        else
+          TAG_NAME="v0.1.0"
+          echo "No tags found in history. Using default tag: $TAG_NAME"
+        fi
+        echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
+        echo "Determined tag version: $TAG_NAME"
 
-    - name: Upload APK to the Latest Release
+    - name: Check if Release Exists
+      id: check_release
+      run: |
+        RELEASE_DATA=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+        "https://api.github.com/repos/irmo-de/9UnBot/releases/tags/$TAG_NAME")
+        if echo "$RELEASE_DATA" | grep -q '"id":'; then
+          echo "Release already exists."
+          RELEASE_EXISTS=true
+        else
+          echo "No existing release found."
+          RELEASE_EXISTS=false
+        fi
+        echo "RELEASE_EXISTS=$RELEASE_EXISTS" >> $GITHUB_ENV
+
+    - name: Create Release (if not exists)
+      id: create_release
+      if: env.RELEASE_EXISTS == 'false'
+      run: |
+        RESPONSE=$(curl -s -o response.txt -w "%{http_code}" \
+        -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+        -d "{\"tag_name\": \"$TAG_NAME\", \"name\": \"$TAG_NAME\", \"body\": \"Automated release for version $TAG_NAME\", \"draft\": false, \"prerelease\": false}" \
+        https://api.github.com/repos/irmo-de/9UnBot/releases)
+        
+        if [ "$(cat response.txt)" = "201" ]; then
+          echo "Release created successfully."
+        elif [ "$(cat response.txt)" = "422" ]; then
+          echo "Release already exists."
+        else
+          echo "Unexpected response: $(cat response.txt)"
+          exit 1
+        fi
+
+    - name: Get Upload URL
+      id: get_upload_url
+      run: |
+        if [ "$RELEASE_EXISTS" = "true" ]; then
+          RELEASE_URL=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/irmo-de/9UnBot/releases/tags/$TAG_NAME" | jq -r .upload_url)
+        else
+          RELEASE_URL=$(jq -r .upload_url response.txt)
+        fi
+        UPLOAD_URL="${RELEASE_URL%\{*}"
+        echo "::set-output name=upload_url::$UPLOAD_URL"
+
+    - name: Upload APK to the Release
       uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        upload_url: "https://uploads.github.com/repos/irmo-de/9UnBot/releases/${{ steps.latest_release.outputs.release_id }}/assets?name=app-debug.apk"
+        upload_url: ${{ steps.get_upload_url.outputs.upload_url }}?name=app-debug.apk
         asset_path: ./app/build/outputs/apk/debug/app-debug.apk
         asset_name: app-debug.apk
         asset_content_type: application/vnd.android.package-archive
