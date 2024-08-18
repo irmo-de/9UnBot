@@ -29,10 +29,9 @@ public class BluetoothBackgroundService extends Service {
     private static final int NOTIFICATION_ID = 123;
     private static final String CHANNEL_ID = "BluetoothServiceChannel";
     private static final int MAX_RETRIES = 3;
-    private static final int RETRY_DELAY_MS = 3000; // 2 seconds delay
+    private static final int RETRY_DELAY_MS = 3000;
 
     private ExecutorService backgroundExecutor;
-
     private volatile boolean isOperationInProgress = false;
 
     @Override
@@ -47,10 +46,10 @@ public class BluetoothBackgroundService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (isOperationInProgress) {
             Log.i("NB_BLE", "Operation already in progress. Ignoring this start request.");
-            return START_NOT_STICKY; // Ignore subsequent calls if already running
+            return START_NOT_STICKY;
         }
 
-        isOperationInProgress = true; // Mark operation as in progress
+        isOperationInProgress = true;
 
         PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
         PowerManager.WakeLock wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
@@ -61,11 +60,7 @@ public class BluetoothBackgroundService extends Service {
 
         if (intent != null) {
             String retrievedMacAddress = intent.getStringExtra("MAC_ADDRESS");
-            if (retrievedMacAddress != null) {
-                macAddress = retrievedMacAddress;
-            } else {
-                macAddress = defaultMacAddress;
-            }
+            macAddress = (retrievedMacAddress != null) ? retrievedMacAddress : defaultMacAddress;
         } else {
             macAddress = defaultMacAddress;
         }
@@ -77,16 +72,15 @@ public class BluetoothBackgroundService extends Service {
                 int retryCount = 0;
 
                 while (!success && retryCount < MAX_RETRIES) {
-                    BleUartCommunication uartCommunication = null; // Declare inside the loop
+                    BleUartCommunication uartCommunication = null;
                     try {
                         RxBleClient rxBleClient = RxBleClient.create(this);
                         uartCommunication = new BleUartCommunication(rxBleClient, macAddress);
 
                         performBluetoothOperations(uartCommunication);
-                        success = true; // Mark success if no exceptions occur
+                        success = true;
                     } catch (Exception e) {
                         if (e.getMessage() != null && (e.getMessage().contains("status 0 (GATT_SUCCESS)") || e.getMessage().contains("-6"))) {
-                            // Ignore these specific errors and break out of the retry loop
                             Log.i("NB_BLE", "Ignoring specific error: " + e.getMessage());
                             success = true;
                             break;
@@ -96,7 +90,7 @@ public class BluetoothBackgroundService extends Service {
                             if (retryCount < MAX_RETRIES) {
                                 Log.i("NB_BLE", "Retrying connection... (" + retryCount + "/" + MAX_RETRIES + ")");
                                 try {
-                                    Thread.sleep(RETRY_DELAY_MS); // Wait for 2 seconds before retrying
+                                    Thread.sleep(RETRY_DELAY_MS);
                                 } catch (InterruptedException interruptedException) {
                                     Log.e("NB_BLE", "Retry sleep interrupted: " + interruptedException.getMessage());
                                 }
@@ -106,7 +100,7 @@ public class BluetoothBackgroundService extends Service {
                         }
                     } finally {
                         if (uartCommunication != null) {
-                            uartCommunication.shutdown(); // Ensure shutdown is called within the loop
+                            uartCommunication.shutdown();
                         }
                     }
                 }
@@ -116,15 +110,13 @@ public class BluetoothBackgroundService extends Service {
                 if (wakeLock.isHeld()) {
                     wakeLock.release();
                 }
-                isOperationInProgress = false; // Mark operation as complete
+                isOperationInProgress = false;
+                stopSelf(); // Stop the service when the task is done
             }
         });
 
         return START_NOT_STICKY;
     }
-
-
-
 
     private void performBluetoothOperations(BleUartCommunication uartCommunication) throws Exception {
         ProtocolNinebot NbProtocol = new ProtocolNinebot("NBScooter1777");
@@ -229,7 +221,7 @@ public class BluetoothBackgroundService extends Service {
         return new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Bluetooth Service")
                 .setContentText("Running Bluetooth operations")
-                .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth) // System icon for Bluetooth
+                .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
                 .build();
     }
 
@@ -244,6 +236,20 @@ public class BluetoothBackgroundService extends Service {
             if (manager != null) {
                 manager.createNotificationChannel(serviceChannel);
             }
+        }
+    }
+
+    @Nullable
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        if (backgroundExecutor != null && !backgroundExecutor.isShutdown()) {
+            backgroundExecutor.shutdown();
         }
     }
 
@@ -299,19 +305,5 @@ public class BluetoothBackgroundService extends Service {
         System.arraycopy(a, 0, result, 0, a.length);
         System.arraycopy(b, 0, result, a.length, b.length);
         return result;
-    }
-
-    @Nullable
-    @Override
-    public IBinder onBind(Intent intent) {
-        return null;
-    }
-
-    @Override
-    public void onDestroy() {
-        super.onDestroy();
-        if (backgroundExecutor != null && !backgroundExecutor.isShutdown()) {
-            backgroundExecutor.shutdown();
-        }
     }
 }

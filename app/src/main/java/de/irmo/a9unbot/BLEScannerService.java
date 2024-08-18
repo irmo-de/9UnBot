@@ -33,7 +33,7 @@ public class BLEScannerService extends Service {
     private static final String TAG = "BLEScannerService";
     private static final String TARGET_MAC_ADDRESS = "F6:34:CD:56:E6:1B";
     private static final String CHANNEL_ID = "BLEScannerChannel";
-    private static final long SCAN_DURATION = 15 * 60 * 1000; // 15 minutes
+    private static final long SCAN_DURATION = 10 * 60 * 1000; // 15 minutes
     private static final long DELAY_BEFORE_NEXT_SERVICE = 5000; // 5 seconds
 
     private BluetoothLeScanner bluetoothLeScanner;
@@ -70,6 +70,23 @@ public class BLEScannerService extends Service {
             stopSelf();
         }
     }
+
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null && "STOP_BLE_SCAN".equals(intent.getAction())) {
+            Log.i(TAG, "Received STOP_BLE_SCAN action, stopping BLE scan.");
+            stopBLEScan(); // Ensure the scan is stopped
+            stopSelf(); // Stop the service
+        } else {
+            Log.i(TAG, "Service started, startId: " + startId + ", instance: " + this.hashCode());
+            // Your existing onStartCommand logic here
+        }
+        return START_STICKY;
+    }
+
+
+
 
     private void startBLEScan() {
         // Configure a ScanFilter to target the specific device MAC address
@@ -183,23 +200,18 @@ public class BLEScannerService extends Service {
         }
     }
 
-    @Override
-    public int onStartCommand(Intent intent, int flags, int startId) {
-        Log.i(TAG, "Service started, startId: " + startId + ", instance: " + this.hashCode());
-        return START_STICKY;
-    }
 
     @Override
     public void onDestroy() {
         Log.i(TAG, "Service destroyed, instance: " + this.hashCode());
-        super.onDestroy();
-        stopBLEScan();
+        stopBLEScan(); // Stop BLE scan and cancel any pending alarms
         if (wakeLock != null && wakeLock.isHeld()) {
-            wakeLock.release();
+            wakeLock.release(); // Release the wake lock
         }
         if (handler != null) {
-            handler.removeCallbacksAndMessages(null);
+            handler.removeCallbacksAndMessages(null); // Remove any pending handler callbacks
         }
+        super.onDestroy(); // Call the superclass's onDestroy method
     }
 
     @Override

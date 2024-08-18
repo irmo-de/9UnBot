@@ -43,6 +43,10 @@
             </intent-filter>
         </activity>
 
+        <!-- Declaration of StopScanReceiver -->
+        <receiver android:name=".StopScanReceiver"
+            android:exported="false" />
+
         <service
             android:name=".BLEScannerService"
             android:foregroundServiceType="location"
