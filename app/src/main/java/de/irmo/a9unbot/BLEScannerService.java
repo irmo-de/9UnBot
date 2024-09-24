@@ -33,7 +33,7 @@ public class BLEScannerService extends Service {
     private static final String TAG = "BLEScannerService";
     private static final String TARGET_MAC_ADDRESS = "F6:34:CD:56:E6:1B";
     private static final String CHANNEL_ID = "BLEScannerChannel";
-    private static final long SCAN_DURATION = 10 * 60 * 1000; // 15 minutes
+    private static final long SCAN_DURATION = 15 * 60 * 1000; // 15 minutes
     private static final long DELAY_BEFORE_NEXT_SERVICE = 5000; // 5 seconds
 
     private BluetoothLeScanner bluetoothLeScanner;
